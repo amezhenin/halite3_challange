@@ -28,8 +28,11 @@ def attack_enemy(game, command_queue, ship_status):
     enemy = enemies[0]
 
     # find attacking ship
+    logging.info("Statuses %s" % ship_status.items())
+
     ship = list(filter(lambda x: x[1] == "attack_shipyard", ship_status.items()))
 
+    logging.info("Ships %s" % ship)
     # if not found , assign one
     if len(ship) == 0:
         ship = list(me.get_ships())
@@ -75,6 +78,7 @@ def collect(ship):
     max_idx = halite_choices.index(max(halite_choices))
     return DIRECTIONS[max_idx]
 
+ship_status = defaultdict(lambda: "collecting")
 
 while True:
     # This loop handles each turn of the game. The game object changes every turn, and you refresh that state by
@@ -87,8 +91,6 @@ while True:
     # A command queue holds all the commands you will run this turn. You build this list up and submit it at the
     #   end of the turn.
     command_queue = []
-
-    ship_status = defaultdict(lambda: "collecting")
 
     attack_enemy(game, command_queue, ship_status)
 
@@ -103,7 +105,6 @@ while True:
                 command_queue.append(ship.move(move))
             else:
                 move = collect(ship)
-                logging.info(move)
                 command_queue.append(ship.move(move))
 
         elif ship_status[ship.id] == "returning":
@@ -117,7 +118,10 @@ while True:
 
     # If the game is in the first 200 turns and you have enough halite, spawn a ship.
     # Don't spawn a ship if you currently have a ship at port, though - the ships will collide.
-    if game.turn_number <= 3 and me.halite_amount >= constants.SHIP_COST and not game_map[me.shipyard].is_occupied:
+    turns_to_generate = 3 if len(game.players) == 2 else 1
+    if game.turn_number <= turns_to_generate \
+            and me.halite_amount >= constants.SHIP_COST \
+            and not game_map[me.shipyard].is_occupied:
         command_queue.append(me.shipyard.spawn())
 
 
