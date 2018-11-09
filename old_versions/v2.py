@@ -11,44 +11,12 @@ from hlt import constants
 # This library contains direction metadata to better interface with the game.
 from hlt.positionals import Direction
 
+# This library allows you to generate random numbers.
+import random
 
 # Logging allows you to save messages for yourself. This is required because the regular STDOUT
 #   (print statements) are reserved for the engine-bot communication.
 import logging
-
-
-def attack_enemy(game, command_queue, ship_status):
-    me = game.me
-    game_map = game.game_map
-
-    enemies = game.players.values()
-    enemies = list(filter(lambda x: x.id != me.id, enemies))
-    if len(enemies) != 1:
-        return
-    enemy = enemies[0]
-
-    # find attacking ship
-    ship = list(filter(lambda x: x[1] == "attack_shipyard", ship_status.items()))
-
-    # if not found , assign one
-    if len(ship) == 0:
-        ship = list(me.get_ships())
-        if len(ship) == 0:
-            return
-        ship = ship[0]
-        logging.info("Turning %s ship into attacking ship" % ship)
-        ship_status[ship.id] = "attack_shipyard"
-        pass
-    # if found move it to the enemy shipyard
-    else:
-        ship = list(filter(lambda x: x.id == ship[0][0], me.get_ships()))[0]
-        logging.info("found ship %s" % repr(ship))
-
-    move = game_map.naive_navigate(ship, enemy.shipyard.position)
-    command_queue.append(ship.move(move))
-
-    pass
-
 
 """ <<<Game Begin>>> """
 
@@ -57,7 +25,7 @@ game = hlt.Game()
 # At this point "game" variable is populated with initial map data.
 # This is a good place to do computationally expensive start-up pre-processing.
 # As soon as you call "ready" function below, the 2 second per turn timer will start.
-game.ready("amezhenin-v3")
+game.ready("amezhenin-v2")
 
 # Now that your bot is initialized, save a message to yourself in the log file with some important information.
 #   Here, you log here your id, which you can always fetch from the game object by using my_id.
@@ -90,8 +58,6 @@ while True:
 
     ship_status = defaultdict(lambda: "collecting")
 
-    attack_enemy(game, command_queue, ship_status)
-
     for ship in me.get_ships():
 
 
@@ -113,14 +79,12 @@ while True:
                 move = game_map.naive_navigate(ship, me.shipyard.position)
                 command_queue.append(ship.move(move))
         else:
-            pass
+            0 / 0
 
     # If the game is in the first 200 turns and you have enough halite, spawn a ship.
     # Don't spawn a ship if you currently have a ship at port, though - the ships will collide.
-    if game.turn_number <= 3 and me.halite_amount >= constants.SHIP_COST and not game_map[me.shipyard].is_occupied:
+    if game.turn_number <= 1 and me.halite_amount >= constants.SHIP_COST and not game_map[me.shipyard].is_occupied:
         command_queue.append(me.shipyard.spawn())
-
-
 
     # Send your moves back to the game environment, ending this turn.
     game.end_turn(command_queue)
