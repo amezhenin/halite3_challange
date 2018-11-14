@@ -23,6 +23,7 @@ def attack_enemy(game, command_queue, all_ships):
     # attack shipyard only if it is a duel
     enemies = game.players.values()
     enemies = list(filter(lambda x: x.id != me.id, enemies))
+    # we don't attack if we have 4 players or no ships
     if len(enemies) != 1 or len(all_ships) == 0:
         return all_ships
     enemy = enemies[0]
@@ -38,6 +39,11 @@ def attack_enemy(game, command_queue, all_ships):
             closest_ship = ship
             min_distance = dist
 
+    # if turn is > 100 AND there is NO ships in the enemy shipyard, then don't attack
+    # it means that enemy is killing this ships
+    if game.turn_number > 100 and min_distance != 0:
+        return all_ships
+
     move = game_map.naive_navigate(closest_ship, enemy.shipyard.position)
     command_queue.append(closest_ship.move(move))
     all_ships = list(filter(lambda x: x.id != closest_ship.id, all_ships))
@@ -52,7 +58,7 @@ game = hlt.Game()
 # At this point "game" variable is populated with initial map data.
 # This is a good place to do computationally expensive start-up pre-processing.
 # As soon as you call "ready" function below, the 2 second per turn timer will start.
-game.ready("amezhenin-v4")
+game.ready("amezhenin-v5")
 
 # Now that your bot is initialized, save a message to yourself in the log file with some important information.
 #   Here, you log here your id, which you can always fetch from the game object by using my_id.
@@ -97,8 +103,7 @@ while True:
 
     # If the game is in the first 200 turns and you have enough halite, spawn a ship.
     # Don't spawn a ship if you currently have a ship at port, though - the ships will collide.
-    # game.turn_number <= 123
-    if len(all_ships) == 0 \
+    if len(all_ships) == 0 and game.turn_number <= 200 \
             and me.halite_amount >= constants.SHIP_COST \
             and not game_map[me.shipyard].is_occupied:
         command_queue.append(me.shipyard.spawn())
