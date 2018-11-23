@@ -1,19 +1,16 @@
 #!/usr/bin/env python3
 # Python 3.6
 
-# Import the Halite SDK, which will let you interact with the game.
 import hlt
-
-# This library contains constant values.
 from hlt import constants
-
-# This library contains direction metadata to better interface with the game.
 from hlt.positionals import Direction
-
 import random
-# Logging allows you to save messages for yourself. This is required because the regular STDOUT
-#   (print statements) are reserved for the engine-bot communication.
 import logging
+
+
+DIRECTIONS = [Direction.North, Direction.South, Direction.East, Direction.West]
+SHIP_BUILD_MAX_TURN = 200
+MAX_OWN_SHIPS = 17
 
 
 def attack_enemy(game, command_queue, all_ships):
@@ -51,25 +48,7 @@ def attack_enemy(game, command_queue, all_ships):
     return all_ships
 
 
-""" <<<Game Begin>>> """
-
-# This game object contains the initial game state.
-game = hlt.Game()
-# At this point "game" variable is populated with initial map data.
-# This is a good place to do computationally expensive start-up pre-processing.
-# As soon as you call "ready" function below, the 2 second per turn timer will start.
-game.ready("amezhenin-v6")
-
-# Now that your bot is initialized, save a message to yourself in the log file with some important information.
-#   Here, you log here your id, which you can always fetch from the game object by using my_id.
-logging.info("Successfully created bot! My Player ID is {}.".format(game.my_id))
-
-""" <<<Game Loop>>> """
-
-DIRECTIONS = [Direction.North, Direction.South, Direction.East, Direction.West]
-
-
-def collect(ship):
+def collect(game_map, ship):
     max_halite = game_map[ship.position].halite_amount * 2
     pos_choices = [{
         'position': ship.position,
@@ -113,37 +92,75 @@ def collect(ship):
 
     return best_move['direction']
 
-while True:
-    # This loop handles each turn of the game. The game object changes every turn, and you refresh that state by
-    #   running update_frame().
-    game.update_frame()
-    # You extract player metadata and the updated map metadata here for convenience.
+
+def drop_halite(game, ship, force=False):
     me = game.me
     game_map = game.game_map
+    if force is False:
+        move = game_map.naive_navigate(ship, me.shipyard.position)
+    else:
+        # set shipyard as empty
+        game_map[me.shipyard.position].ship = None
+        move = game_map.naive_navigate(ship, me.shipyard.position)
+    return move
 
-    # A command queue holds all the commands you will run this turn. You build this list up and submit it at the
-    #   end of the turn.
-    command_queue = []
 
-    all_ships = me.get_ships()
-    all_ships = attack_enemy(game, command_queue, all_ships)
+def main():
+    """ <<<Game Begin>>> """
 
-    for ship in all_ships:
+    # This game object contains the initial game state.
+    game = hlt.Game()
+    # At this point "game" variable is populated with initial map data.
+    # This is a good place to do computationally expensive start-up pre-processing.
+    # As soon as you call "ready" function below, the 2 second per turn timer will start.
+    game.ready("amezhenin-v7")
 
-        if ship.halite_amount >= constants.MAX_HALITE * 0.4:
-            # navigate to home
-            move = game_map.naive_navigate(ship, me.shipyard.position)
-            command_queue.append(ship.move(move))
-        else:
-            move = collect(ship)
-            command_queue.append(ship.move(move))
+    # Now that your bot is initialized, save a message to yourself in the log file with some important information.
+    #   Here, you log here your id, which you can always fetch from the game object by using my_id.
+    logging.info("Successfully created bot! My Player ID is {}.".format(game.my_id))
+    logging.info("Max turns %s" % constants.MAX_TURNS)
 
-    # If the game is in the first 200 turns and you have enough halite, spawn a ship.
-    # Don't spawn a ship if you currently have a ship at port, though - the ships will collide.
-    if game.turn_number <= 200 and len(all_ships) <= 17 \
-            and me.halite_amount >= constants.SHIP_COST \
-            and not game_map[me.shipyard].is_occupied:
-        command_queue.append(me.shipyard.spawn())
+    """ <<<Game Loop>>> """
+    while True:
+        # This loop handles each turn of the game. The game object changes every turn, and you refresh that state by
+        #   running update_frame().
+        game.update_frame()
+        # You extract player metadata and the updated map metadata here for convenience.
+        me = game.me
+        game_map = game.game_map
 
-    # Send your moves back to the game environment, ending this turn.
-    game.end_turn(command_queue)
+        # A command queue holds all the commands you will run this turn. You build this list up and submit it at the
+        #   end of the turn.
+        command_queue = []
+
+        all_ships = me.get_ships()
+        all_ships = attack_enemy(game, command_queue, all_ships)
+
+        for ship in all_ships:
+            home_dist = game_map.calculate_distance(ship.position, me.shipyard.position)
+            is_game_end = home_dist + 10 > (constants.MAX_TURNS - game.turn_number)
+
+            if ship.halite_amount >= constants.MAX_HALITE * 0.4:
+                # navigate to home
+                move = drop_halite(game, ship)
+                command_queue.append(ship.move(move))
+            elif is_game_end:
+                move = drop_halite(game, ship, force=True)
+                command_queue.append(ship.move(move))
+            else:
+                move = collect(game_map, ship)
+                command_queue.append(ship.move(move))
+
+        # If the game is in the first X turns and you have enough halite, spawn a ship.
+        # Don't spawn a ship if you currently have a ship at port, though - the ships will collide.
+        if game.turn_number <= SHIP_BUILD_MAX_TURN and len(all_ships) <= MAX_OWN_SHIPS \
+                and me.halite_amount >= constants.SHIP_COST \
+                and not game_map[me.shipyard].is_occupied:
+            command_queue.append(me.shipyard.spawn())
+
+        # Send your moves back to the game environment, ending this turn.
+        game.end_turn(command_queue)
+
+
+if __name__ == "__main__":
+    main()
