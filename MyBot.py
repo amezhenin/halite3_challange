@@ -3,14 +3,14 @@
 
 import hlt
 from hlt import constants
-from hlt.positionals import Direction
+from hlt.positionals import Direction, Position
 import random
 import logging
 
-
+BOT_VERSION = "amezhenin-v8"
 DIRECTIONS = [Direction.North, Direction.South, Direction.East, Direction.West]
 SHIP_BUILD_MAX_TURN = 200
-MAX_OWN_SHIPS = 17
+MAX_OWN_SHIPS = 15
 
 
 def attack_enemy(game, command_queue, all_ships):
@@ -48,6 +48,58 @@ def attack_enemy(game, command_queue, all_ships):
     return all_ships
 
 
+def construct_dropoff(game, command_queue, all_ships):
+    me = game.me
+    game_map = game.game_map
+
+    if game.turn_number < 50 or len(me.get_dropoffs()) > 0 or me.halite_amount < constants.DROPOFF_COST:
+        return all_ships
+
+    # scan all position and find a all positions with halite > 500
+    candidates = []
+    for w in range(0, game_map.width):
+        for h in range(0, game_map.height):
+            p = Position(w, h)
+            if game_map[p].halite_amount > 500:
+                candidates.append(p)
+
+    if not candidates:
+        return all_ships
+
+    # pick closest to shipyard closest
+    closest_cand = None
+    closest_dist = 9999
+    for c in candidates:
+        dist = game_map.calculate_distance(c, me.shipyard.position)
+        if 10 <= dist < closest_dist:
+            logging.info("New candidate dist %s with pos %s" % (dist, c))
+            closest_cand = c
+            closest_dist = dist
+
+    # pick closest ship to that position
+    closest_ship = all_ships[0]
+    closest_dist = 9999
+    for ship in all_ships:
+        dist = game_map.calculate_distance(ship.position, closest_cand)
+        if dist < closest_dist:
+            logging.info("New ship dist %s with pos %s" % (dist, ship.position))
+            closest_ship = ship
+            closest_dist = dist
+
+    # move there
+    if closest_dist != 0:
+        move = game_map.naive_navigate(closest_ship, closest_cand)
+        command_queue.append(closest_ship.move(move))
+        all_ships = list(filter(lambda x: x.id != closest_ship.id, all_ships))
+        return all_ships
+
+    # if we are there, try to build a dropoff
+    logging.info("Ship %s is making dropoff" % closest_ship)
+    command_queue.append(closest_ship.make_dropoff())
+    all_ships = list(filter(lambda x: x.id != closest_ship.id, all_ships))
+    return all_ships
+
+
 def collect(game_map, ship):
     max_halite = game_map[ship.position].halite_amount * 2
     pos_choices = [{
@@ -71,7 +123,7 @@ def collect(game_map, ship):
     # pos_choices = [ship.position] + pos_choices
     # halite_choices = list(map(lambda x: game_map[x].halite_amount, pos_choices))
     # halite_choices[0] *= 2  # we prefer to stand still
-    logging.info(pos_choices)
+    # logging.info(pos_choices)
 
     best_moves = list(filter(lambda x: x['halite'] == max_halite, pos_choices))
     if len(best_moves) > 1:
@@ -96,13 +148,29 @@ def collect(game_map, ship):
 def drop_halite(game, ship, force=False):
     me = game.me
     game_map = game.game_map
-    if force is False:
-        move = game_map.naive_navigate(ship, me.shipyard.position)
+
+    dropoffs = me.get_dropoffs()
+    if len(dropoffs):
+        drop_pos = dropoffs[0].position
     else:
-        # set shipyard as empty
-        game_map[me.shipyard.position].ship = None
-        move = game_map.naive_navigate(ship, me.shipyard.position)
+        drop_pos = me.shipyard.position
+
+    if force is False:
+        move = game_map.naive_navigate(ship, drop_pos)
+    else:
+        # set dropoff/shipyard as empty
+        game_map[drop_pos].ship = None
+        move = game_map.naive_navigate(ship, drop_pos)
     return move
+
+
+def is_end_game(game, ship):
+    me = game.me
+    game_map = game.game_map
+
+    home_dist = game_map.calculate_distance(ship.position, me.shipyard.position)
+    res = home_dist + 10 > (constants.MAX_TURNS - game.turn_number)
+    return res
 
 
 def main():
@@ -113,7 +181,7 @@ def main():
     # At this point "game" variable is populated with initial map data.
     # This is a good place to do computationally expensive start-up pre-processing.
     # As soon as you call "ready" function below, the 2 second per turn timer will start.
-    game.ready("amezhenin-v7")
+    game.ready(BOT_VERSION)
 
     # Now that your bot is initialized, save a message to yourself in the log file with some important information.
     #   Here, you log here your id, which you can always fetch from the game object by using my_id.
@@ -135,16 +203,14 @@ def main():
 
         all_ships = me.get_ships()
         all_ships = attack_enemy(game, command_queue, all_ships)
+        all_ships = construct_dropoff(game, command_queue, all_ships)
 
         for ship in all_ships:
-            home_dist = game_map.calculate_distance(ship.position, me.shipyard.position)
-            is_game_end = home_dist + 10 > (constants.MAX_TURNS - game.turn_number)
-
-            if ship.halite_amount >= constants.MAX_HALITE * 0.4:
+            if ship.halite_amount >= constants.MAX_HALITE * 0.6:
                 # navigate to home
                 move = drop_halite(game, ship)
                 command_queue.append(ship.move(move))
-            elif is_game_end:
+            elif is_end_game(game, ship):
                 move = drop_halite(game, ship, force=True)
                 command_queue.append(ship.move(move))
             else:
