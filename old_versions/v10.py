@@ -11,7 +11,7 @@ import logging
 BOT_VERSION = "amezhenin-v10"
 DIRECTIONS = [Direction.North, Direction.South, Direction.East, Direction.West]
 SHIP_BUILD_MAX_TURN = 200
-MAX_OWN_SHIPS = 15
+MAX_OWN_SHIPS = 20
 
 
 def attack_enemy(game, command_queue, all_ships):
@@ -222,7 +222,7 @@ def main():
         all_ships = construct_dropoff(game, command_queue, all_ships)
 
         for ship in all_ships:
-            if ship.halite_amount >= constants.MAX_HALITE * 0.6:
+            if ship.halite_amount >= constants.MAX_HALITE * 0.9:
                 # navigate to home
                 move = drop_halite(game, ship)
                 command_queue.append(ship.move(move))
