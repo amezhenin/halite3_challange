@@ -10,7 +10,6 @@ import logging
 
 BOT_VERSION = "amezhenin-v11"
 DIRECTIONS = [Direction.North, Direction.South, Direction.East, Direction.West]
-SHIP_BUILD_MAX_TURN = 200
 MAX_OWN_SHIPS = 20
 MIN_DROPOFF_DIST = 10
 
@@ -18,6 +17,8 @@ MIN_DROPOFF_DIST = 10
 class Bot:
     def __init__(self):
         self.game = hlt.Game()
+        self.SHIP_BUILD_MAX_TURN = constants.MAX_TURNS / 2
+
         self.me = None
         self.game_map = None
         self.command_queue = []
@@ -68,9 +69,7 @@ class Bot:
 
 
     def build_ship(self):
-        # If the game is in the first X turns and you have enough halite, spawn a ship.
-        # Don't spawn a ship if you currently have a ship at port, though - the ships will collide.
-        if self.game.turn_number <= SHIP_BUILD_MAX_TURN and len(self.my_ships) <= MAX_OWN_SHIPS \
+        if self.game.turn_number <= self.SHIP_BUILD_MAX_TURN and len(self.my_ships) <= MAX_OWN_SHIPS \
                 and self.me.halite_amount >= constants.SHIP_COST \
                 and not self.game_map[self.me.shipyard].is_occupied:
             self.command_queue.append(self.me.shipyard.spawn())
@@ -218,6 +217,8 @@ class Bot:
                 self.game_map[drop_pos].ship = None
             move = self.game_map.naive_navigate(ship, drop_pos)
         else:
+            # we don't care where to go suicide, so we can change destination to closes one
+            drop_pos = self.find_closest_dropoff(ship).position
             # set dropoff/shipyard as empty
             self.game_map[drop_pos].ship = None
             move = self.game_map.naive_navigate(ship, drop_pos)
@@ -232,9 +233,27 @@ class Bot:
 
 
     def is_end_game(self, ship):
-        home_dist = self.game_map.calculate_distance(ship.position, self.me.shipyard.position)
+        closest = self.find_closest_dropoff(ship)
+        home_dist = self.game_map.calculate_distance(ship.position, closest.position)
         res = home_dist + 10 > (constants.MAX_TURNS - self.game.turn_number)
         return res
+
+
+    def find_closest_dropoff(self, ship, with_shipyard=True):
+        dropoffs = self.me.get_dropoffs()
+        if with_shipyard:
+            dropoffs.append(self.me.shipyard)
+
+        closest_dist = 9999
+        closest_dropoff = dropoffs[0]
+        for d in dropoffs:
+            dist = self.game_map.calculate_distance(ship.position, d.position)
+            if dist < closest_dist:
+                logging.info("Closest dropoff %s for ship %s" % (d, ship))
+                closest_dist = dist
+                closest_dropoff = d
+
+        return closest_dropoff
 
 
 if __name__ == "__main__":
