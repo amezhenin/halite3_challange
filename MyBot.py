@@ -11,7 +11,7 @@ import logging
 BOT_VERSION = "amezhenin-v11"
 DIRECTIONS = [Direction.North, Direction.South, Direction.East, Direction.West]
 MAX_OWN_SHIPS = 20
-MIN_DROPOFF_DIST = 10
+MIN_DROPOFF_DIST = 20
 
 
 class Bot:
@@ -20,6 +20,7 @@ class Bot:
         self.SHIP_BUILD_MAX_TURN = constants.MAX_TURNS / 2
 
         self.me = None
+        self.enemies = []
         self.game_map = None
         self.command_queue = []
         self.my_ships = []
@@ -63,6 +64,7 @@ class Bot:
         self.game.update_frame()
         # You extract player metadata and the updated map metadata here for convenience.
         self.me = self.game.me
+        self.enemies = list(filter(lambda x: x.id != self.me.id, self.game.players.values()))
         self.game_map = self.game.game_map
         self.command_queue = []
         self.my_ships = self.me.get_ships()
@@ -80,12 +82,10 @@ class Bot:
         DISABLED: attack shipyard only if it is a duel
         """
 
-        enemies = self.game.players.values()
-        enemies = list(filter(lambda x: x.id != self.me.id, enemies))
         # we don't attack if we have 4 players or no ships
-        if len(enemies) != 1 or len(self.my_ships) == 0:
+        if len(self.enemies) != 1 or len(self.my_ships) == 0:
             return
-        enemy = enemies[0]
+        enemy = self.enemies[0]
 
         # find a closest ship and use to attack the enemy
         closest_ship = self.my_ships[0]
@@ -112,7 +112,7 @@ class Bot:
         if self.game.turn_number < 50 \
                 or len(self.me.get_dropoffs()) > 0 \
                 or self.me.halite_amount < constants.DROPOFF_COST:
-            return self.my_ships
+            return
 
         # scan all position and find a closest to shipyard closest with max halite
         closest_cand = None
@@ -121,7 +121,8 @@ class Bot:
         for w in range(0, self.game_map.width):
             for h in range(0, self.game_map.height):
                 p = Position(w, h)
-                dist = self.game_map.calculate_distance(p, self.me.shipyard.position)
+                closest_dropoff = self.find_closest_dropoff(p, True, True)
+                dist = self.game_map.calculate_distance(p, closest_dropoff.position)
                 if dist < MIN_DROPOFF_DIST:
                     continue
                 halite = self.game_map[p].halite_amount
@@ -218,7 +219,7 @@ class Bot:
             move = self.game_map.naive_navigate(ship, drop_pos)
         else:
             # we don't care where to go suicide, so we can change destination to closes one
-            drop_pos = self.find_closest_dropoff(ship).position
+            drop_pos = self.find_closest_dropoff(ship.position).position
             # set dropoff/shipyard as empty
             self.game_map[drop_pos].ship = None
             move = self.game_map.naive_navigate(ship, drop_pos)
@@ -233,23 +234,28 @@ class Bot:
 
 
     def is_end_game(self, ship):
-        closest = self.find_closest_dropoff(ship)
+        closest = self.find_closest_dropoff(ship.position)
         home_dist = self.game_map.calculate_distance(ship.position, closest.position)
         res = home_dist + 10 > (constants.MAX_TURNS - self.game.turn_number)
         return res
 
 
-    def find_closest_dropoff(self, ship, with_shipyard=True):
+    def find_closest_dropoff(self, position, with_shipyard=True, with_enemy=False):
         dropoffs = self.me.get_dropoffs()
         if with_shipyard:
             dropoffs.append(self.me.shipyard)
+        if with_enemy:
+            for e in self.enemies:
+                dropoffs += e.get_dropoffs()
+                dropoffs.append(e.shipyard)
+            logging.info("Final list of dropoffs %s" % dropoffs)
 
         closest_dist = 9999
         closest_dropoff = dropoffs[0]
         for d in dropoffs:
-            dist = self.game_map.calculate_distance(ship.position, d.position)
+            dist = self.game_map.calculate_distance(position, d.position)
             if dist < closest_dist:
-                logging.info("Closest dropoff %s for ship %s" % (d, ship))
+                # logging.info("Closest dropoff %s for ship %s" % (d, ship))
                 closest_dist = dist
                 closest_dropoff = d
 
