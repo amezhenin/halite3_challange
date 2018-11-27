@@ -38,7 +38,7 @@ class Bot:
         while True:
             self.update_frame()
 
-            self.attack_enemy_shipyard()
+            # self.attack_enemy_shipyard()
             self.construct_dropoff()
 
             for ship in self.my_ships:
@@ -77,7 +77,10 @@ class Bot:
 
 
     def attack_enemy_shipyard(self):
-        # attack shipyard only if it is a duel
+        """
+        DISABLED: attack shipyard only if it is a duel
+        """
+
         enemies = self.game.players.values()
         enemies = list(filter(lambda x: x.id != self.me.id, enemies))
         # we don't attack if we have 4 players or no ships
@@ -96,15 +99,13 @@ class Bot:
                 closest_ship = ship
                 min_distance = dist
 
-        # if turn is > 50 AND there is NO ships in the enemy shipyard, then don't attack
+        # if turn is in (300;340] AND there is NO ships in the enemy shipyard, then don't attack
         # it means that enemy is killing this ships
-        if self.game.turn_number > 50 and min_distance != 0:
-            return
-
-        move = self.game_map.naive_navigate(closest_ship, enemy.shipyard.position)
-        self.command_queue.append(closest_ship.move(move))
-        self.my_ships = list(filter(lambda x: x.id != closest_ship.id, self.my_ships))
-        # logging.info("Final list %s" % self.my_ships)
+        if 300 < self.game.turn_number <= 340 or min_distance == 0:
+            move = self.game_map.naive_navigate(closest_ship, enemy.shipyard.position)
+            self.command_queue.append(closest_ship.move(move))
+            self.my_ships = list(filter(lambda x: x.id != closest_ship.id, self.my_ships))
+            # logging.info("Final list %s" % self.my_ships)
 
 
     def construct_dropoff(self):
